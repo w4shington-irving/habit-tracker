@@ -2,7 +2,7 @@ use chrono::{NaiveDate, Datelike, Local};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use terminal_size::{terminal_size, Width};
-use crossterm::{cursor::MoveTo, ExecutableCommand};
+use crossterm::{cursor::MoveTo, cursor::Hide, ExecutableCommand};
 use crossterm::cursor;
 use std::io;
 use std::io::{stdout, Write};
@@ -107,6 +107,9 @@ fn main() {
         stdout.flush().unwrap();
         //println!("{}:{}",day, ordinal);
     }
+
+    stdout.execute(Hide).unwrap();
+
     while true {
         thread::sleep(Duration::from_secs(10));
     }
