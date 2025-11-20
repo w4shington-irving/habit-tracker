@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use terminal_size::{terminal_size, Width};
 use crossterm::{cursor::MoveTo, ExecutableCommand};
+use crossterm::cursor;
 use std::io;
 use std::io::{stdout, Write};
 use std::{thread, time::Duration};
@@ -54,11 +55,14 @@ fn add_habit(habits: &mut Vec<Habit>, name: &str) {
 }
 */
 fn main() {
+    
     let mut stdout = stdout();
-    let mut capacity = 0;
     let mut width = 0;
+
+    let (x_offset, y_offset) = cursor::position().unwrap();
+    //println!("\nCursor is at ({}, {})", x_offset, y_offset);
+
     if let Some((Width(w), _)) = terminal_size() {
-        capacity = (w/2)*7;
         width = w;
         for _y in 0..7 {    
             for _x in 0..w/2 {
@@ -78,7 +82,7 @@ fn main() {
     let current_weekday = current_date.weekday().number_from_monday();
        
     for i in current_weekday..7 {
-        stdout.execute(MoveTo(2*(width/2)-2, i as u16)).unwrap();
+        stdout.execute(MoveTo(2*(width/2)-2+x_offset, y_offset + i as u16)).unwrap();
         print!("  ");
     }
     
@@ -90,11 +94,11 @@ fn main() {
         let mut difference_week = current_week as u16- week as u16;
         
         let mut position_x = 2*(width/2) - 2*difference_week-2;
-        let mut position_y = weekday-1;
+        let mut position_y = weekday as u16 -1;
         
         //println!("{}:{},{}", date, position_x, position_y);
         if position_x >= 0 {
-            stdout.execute(MoveTo(position_x, position_y.try_into().unwrap())).unwrap();
+            stdout.execute(MoveTo(position_x+x_offset, position_y+y_offset)).unwrap();
             print!(" ");
         } else {
             break;
