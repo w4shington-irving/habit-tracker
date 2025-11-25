@@ -1,9 +1,9 @@
 use chrono::{NaiveDate, Datelike, Local};
+use crossterm::terminal::{Clear, ClearType};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use terminal_size::{terminal_size, Width};
 use crossterm::{cursor::MoveTo, cursor::Hide, ExecutableCommand};
-use crossterm::cursor;
 use std::io;
 use std::io::{stdout, Write};
 use std::{thread, time::Duration};
@@ -59,7 +59,11 @@ fn main() {
     let mut stdout = stdout();
     let mut width = 0;
     
-    execute!(stdout(), Clear(ClearType::All)).unwrap();
+
+    
+
+    stdout.execute(Clear(ClearType::All)).unwrap();
+
 
     
     if let Some((Width(w), _)) = terminal_size() {
