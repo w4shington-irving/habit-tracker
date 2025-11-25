@@ -2,11 +2,12 @@ use chrono::{NaiveDate, Datelike, Local};
 use crossterm::terminal::{Clear, ClearType};
 use serde::{Deserialize, Serialize};
 use std::fs;
+
 use terminal_size::{terminal_size, Width};
 use crossterm::{cursor::MoveTo, cursor::Hide, ExecutableCommand};
 use std::io;
 use std::io::{stdout, Write};
-use std::{thread, time::Duration};
+
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Habit {
@@ -54,69 +55,87 @@ fn add_habit(habits: &mut Vec<Habit>, name: &str) {
 
 }
 */
-fn main() {
+
+fn load_habits(path: &str) -> Vec<Habit> {
     
+    let habits = load_data(path).expect("Failed to load data");
+    return habits;
+}
+
+
+fn print_graph(width: &u16) {
     let mut stdout = stdout();
-    let mut width = 0;
-    
-
-    
-
     stdout.execute(Clear(ClearType::All)).unwrap();
-
-
-    
-    if let Some((Width(w), _)) = terminal_size() {
-        width = w;
-        for _y in 0..7 {    
-            for _x in 0..w/2 {
+    stdout.execute(MoveTo(0, 0)).unwrap();
+    for _y in 0..7 {    
+            for _x in 0..width/2 {
                 print!(" ");
             } print!("\n");
         }
-    } else {
-       println!("Couldn't get terminal size.");
-    }
+}
 
-    let path = "/home/washington/Documents/habit-tracker/habits.json";
-    let habits = load_data(path).expect("Failed to load data");
-    
-    let habit = &habits[0];
+fn print_habit(habit:&Habit, width:u16) {
+    let mut stdout = stdout();
     let current_date = Local::now().date_naive();
     let current_week = current_date.iso_week().week();
     let current_weekday = current_date.weekday().number_from_monday();
+
+    // Mark completed days
+    for day in habit.history.iter().rev() {
+        let date = NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
+        let week = date.iso_week().week();
+        let weekday = date.weekday().number_from_monday();
+
+        let difference_week = current_week as i32 - week as i32;
+        
+        // compute using signed arithmetic so we can detect negative positions safely
+        let calc_x = 2 * (width as i32 / 2) - 2 * difference_week - 2;
+        if calc_x < 0 {
+            break;
+        }
+        
+        let position_x = calc_x as u16;
+        let position_y = weekday as u16 -1;   
+        
+        stdout.execute(MoveTo(position_x, position_y)).unwrap();
+        print!(" ");
+    }
        
-    for i in current_weekday..7 {
+    // Remove upcoming days
+    for i in current_weekday..8 {
         stdout.execute(MoveTo(2*(width/2)-2, i as u16)).unwrap();
         print!("  ");
     }
     
-    for day in habit.history.iter().rev() {
-        let mut date = NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
-        let mut week = date.iso_week().week();
-        let mut weekday = date.weekday().number_from_monday();
-
-        let mut difference_week = current_week as u16- week as u16;
-        
-        let mut position_x = 2*(width/2) - 2*difference_week-2;
-        let mut position_y = weekday as u16 -1;
-        
-        
-        if position_x >= 0 {
-            stdout.execute(MoveTo(position_x, position_y)).unwrap();
-            print!(" ");
-        } else {
-            break;
-        }
-        
-        stdout.flush().unwrap();
     
+}
+
+
+fn main() {
+    
+    let mut stdout = stdout();
+    let width: u16;
+    
+
+    if let Some((Width(w), _)) = terminal_size() {
+        print_graph(&w);
+        width = w;
+        
+    } else {
+       println!("Couldn't get terminal size.");
+       std::process::exit(1);
     }
 
+    
+    let path = "/home/washington/Documents/habit-tracker/habits.json";
+    let habits = load_habits(path);
+
+    let habit = &habits[0];
+    print_habit(habit, width);
+    
+    stdout.execute(MoveTo(0, 8)).unwrap();
+    stdout.flush().unwrap();
     stdout.execute(Hide).unwrap();
-
-    while true {
-        thread::sleep(Duration::from_secs(10));
-    }
     
 }
 
