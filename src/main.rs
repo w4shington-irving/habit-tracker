@@ -161,10 +161,11 @@ fn print_graph(habit: &Habit) {
         let date = NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
         let weekday = date.weekday().number_from_monday();
 
-        let difference = current_date - date;
+        let difference = current_date-date;
         
-        // compute using signed arithmetic so we can detect negative positions safely
-        let calc_x = 2 * (width as i32 / 2) - 2 * difference.num_weeks() as i32 - 2;
+        
+        let calc_x = 2 * (width as i32 / 2) - 2 * (difference.num_days() as i32 + weekday as i32)/7-2;
+        
         if calc_x < 0 {
             break;
         }
@@ -248,3 +249,7 @@ fn main() {
     
 }
 
+/* To-do
+- Add edit mode
+- Add default habit
+ */
