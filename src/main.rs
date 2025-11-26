@@ -2,6 +2,7 @@ use chrono::{Datelike, Local, NaiveDate};
 use crossterm::terminal::{Clear, ClearType};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use terminal_size::{terminal_size, Width};
 use crossterm::{cursor::MoveTo, cursor::Hide, ExecutableCommand};
@@ -9,6 +10,7 @@ use std::io;
 use std::io::{stdout, Write};
 use prettytable::{Table, Row, Cell};
 use prettytable::Attr; // for bold, italic, etc.
+use directories_next::ProjectDirs;
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -29,6 +31,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// List all habits
+    List,
     /// Print the graph with your habit's history
     Graph {
         name: String,
@@ -43,13 +47,38 @@ enum Commands {
         /// Name of the habit
         name: String,
     },
-    /// List all habits
-    List,
+    /// Remove a habit
+    Remove {
+        name: String,
+    }
+    
 
 }
 
-fn load_data(path: &str) -> io::Result<Vec<Habit>> {
-    if let Ok(contents) = fs::read_to_string(path) {
+
+fn get_habits_path() -> io::Result<PathBuf> {
+    
+    let proj_dirs = ProjectDirs::from("", "w4shington-irving", "habit-tracker")
+        .expect("Failed to get project directories");
+
+    let data_dir = proj_dirs.data_dir();    // ~/.local/share/HabitTracker/
+    let file_path = data_dir.join("habits.json");
+
+    
+    if !data_dir.exists() {
+        fs::create_dir_all(data_dir)?;
+    }
+
+    
+    if !file_path.exists() {
+        fs::write(&file_path, "[]")?; // start with empty array
+    }
+
+    Ok(file_path)
+}
+
+fn load_data(habits_path: &PathBuf) -> io::Result<Vec<Habit>> {
+    if let Ok(contents) = fs::read_to_string(habits_path) {
         let habits: Vec<Habit> = serde_json::from_str(&contents).unwrap_or_default();
         Ok(habits)
     } else {
@@ -57,9 +86,9 @@ fn load_data(path: &str) -> io::Result<Vec<Habit>> {
     }
 }
 
-fn save_data(path: &str, habits: &Vec<Habit>) -> io::Result<()> {
+fn save_data(habits_path: &PathBuf, habits: &Vec<Habit>) -> io::Result<()> {
     let json = serde_json::to_string_pretty(habits).unwrap();
-    fs::write(path, json)
+    fs::write(habits_path, json)
 }
 
 fn check_streak(habits: &mut Vec<Habit>) {
@@ -75,6 +104,7 @@ fn check_streak(habits: &mut Vec<Habit>) {
     }
 
 }
+
 fn mark_habit(habits: &mut Vec<Habit>, name: &str) {
     let today = Local::now().date_naive();
 
@@ -160,24 +190,20 @@ fn print_graph(habit: &Habit) {
     
 }
 
-fn list_habits(path: &str) {
-    
-    let habits = load_data(&path).expect("Failed to load data");
+fn list_habits(habits: Vec<Habit>) {
+    // Create the table
     let mut table = Table::new();
-
-
     table.add_row(Row::new(vec![
-        Cell::new("ID").with_style(Attr::Bold),
         Cell::new("Habit").with_style(Attr::Bold),
         Cell::new("Streak").with_style(Attr::Bold),
+        Cell::new("Last Entry").with_style(Attr::Bold),
     ]));
-    let mut i = 0;
+
     for habit in habits {
-        i+=1;
         table.add_row(Row::new(vec![
-            Cell::new(&i.to_string()),
             Cell::new(&habit.name),
             Cell::new(&habit.streak.to_string()),
+            Cell::new(habit.history.last().map(|s| s.as_str()).unwrap_or("")),
         ]));
     }
     table.printstd();
@@ -190,39 +216,37 @@ fn main() {
     
     let cli = Cli::parse();
 
-    // To-Do: add paths relative to executable directory, make the project portable
-
-    let path = "/home/washington/Documents/habit-tracker/habits.json";
-    let mut habits = load_data(path).expect("Failed to load data");
+    let habits_path = get_habits_path().unwrap();
+    let mut habits = load_data(&habits_path).expect("Failed to load data");
 
     check_streak(&mut habits);
-    let _ = save_data(path, &habits);
+
+    let _ = save_data(&habits_path, &habits);
 
     match &cli.command {
+        Commands::List => {
+            
+            list_habits(habits);
+        }
         Commands::Mark { name } => {
             mark_habit(&mut habits, name);
-            let _ = save_data(path, &habits);
+            let _ = save_data(&habits_path, &habits);
         }
         Commands::Add { name } => {
             add_habit(&mut habits, name);
-            let _ = save_data(path, &habits);
+            let _ = save_data(&habits_path, &habits);
         }
         Commands::Graph { name } => {
-            for habit in habits {
-                if habit.name == *name {
-                    print_graph(&habit);
-                }
+            if let Some(habit) = habits.iter_mut().find(|h| h.name == *name) {
+                print_graph(&habit);
             }
         }
-        Commands::List => {
-            
-            list_habits(path);
+        Commands::Remove { name } => {
+            habits.retain(|h| h.name != *name);
+            let _ = save_data(&habits_path, &habits);
         }
+        
     }
-    
-
-    
-    
     
 }
 

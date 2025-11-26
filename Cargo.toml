@@ -13,3 +13,4 @@ terminal_size = "0.4.3"
 crossterm = "0.29"
 clap = { version = "4.3", features = ["derive"] }
 prettytable = "0.10"
+directories-next = "2.0"
