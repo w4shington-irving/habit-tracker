@@ -132,13 +132,12 @@ fn print_graph(habit: &Habit) {
     // Mark completed days
     for day in habit.history.iter().rev() {
         let date = NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
-        let week = date.iso_week().week();
         let weekday = date.weekday().number_from_monday();
 
-        let difference_week = current_week as i32 - week as i32;
+        let difference = current_date - date;
         
         // compute using signed arithmetic so we can detect negative positions safely
-        let calc_x = 2 * (width as i32 / 2) - 2 * difference_week - 2;
+        let calc_x = 2 * (width as i32 / 2) - 2 * difference.num_weeks() as i32 - 2;
         if calc_x < 0 {
             break;
         }
@@ -193,7 +192,7 @@ fn main() {
     let cli = Cli::parse();
 
     // To-Do: add paths relative to executable directory, make the project portable
-    
+
     let path = "/home/washington/Documents/habit-tracker/habits.json";
     let mut habits = load_data(path).expect("Failed to load data");
 
