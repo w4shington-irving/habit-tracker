@@ -1,13 +1,12 @@
-use chrono::{Datelike, Days, Duration, Local, NaiveDate};
+use chrono::{Datelike, Local, NaiveDate};
 use crossterm::ExecutableCommand;
 use crossterm::cursor::{Hide, MoveTo};
-use crossterm::terminal::{Clear, ClearType, enable_raw_mode};
+use crossterm::terminal::{Clear, ClearType};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use terminal_size::{terminal_size, Width};
-use crossterm::event::{self, Event, KeyCode};
 use std::io;
 use std::io::{stdout, Write};
 use prettytable::{Table, Row, Cell};
@@ -24,8 +23,11 @@ struct Habit {
 
 
 #[derive(Parser)] 
-#[command(name = "habit-tracker")]
-#[command(about = "A simple habit tracker CLI", long_about = None)]
+#[command(
+    name = "habit-tracker",
+    about = "A simple habit tracker",
+    override_usage = "habit-tracker <COMMAND> [HABIT] [DATE]"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -39,10 +41,17 @@ enum Commands {
     Graph {
         name: String,
     },
-    /// Mark a habit as done today
+    /// Mark a day (or days) as done, leave empty to mark today
     Mark {
         /// Name of the habit
         name: String,
+        dates: Vec<String>,
+    },
+    /// Unmark marked day (or days), leave empty to unmark today 
+    Unmark {
+        /// Name of the habit
+        name: String,
+        dates: Vec<String>,
     },
     /// Add a new habit
     Add {
@@ -53,10 +62,6 @@ enum Commands {
     Remove {
         name: String,
     },
-    /// Edit a habit's history
-    Edit {
-        name: String,
-    }
 }
 
 
@@ -65,7 +70,7 @@ fn get_habits_path() -> io::Result<PathBuf> {
     let proj_dirs = ProjectDirs::from("", "w4shington-irving", "habit-tracker")
         .expect("Failed to get project directories");
 
-    let data_dir = proj_dirs.data_dir();    // ~/.local/share/HabitTracker/
+    let data_dir = proj_dirs.data_dir();    // ~/.local/share/habit-tracker/
     let file_path = data_dir.join("habits.json");
 
     
@@ -99,28 +104,51 @@ fn check_streak(habits: &mut Vec<Habit>) {
     let today = Local::now().date_naive();
     for habit in habits {
         if let Some(last_entry) = habit.history.last() {
-            let last_str: &str = last_entry.as_str(); // convert &String -> &str
+            let last_str: &str = last_entry.as_str(); 
             let date = NaiveDate::parse_from_str(last_str, "%Y-%m-%d").unwrap();
             if (today - date).num_days() > 1 {
                 habit.streak = 0;
+            } else if date == today {
+                habit.streak += 1;
             }
         }   
     }
 
 }
 
-fn mark_habit(habits: &mut Vec<Habit>, name: &str) {
-    let today = Local::now().date_naive();
-
+fn mark_habit(habits: &mut Vec<Habit>, name: &str, dates: Vec<String>) {
+    
     if let Some(habit) = habits.iter_mut().find(|h| h.name == name) {
-        let today_str = today.to_string();
-        if !habit.history.contains(&today_str) {
-            habit.history.push(today_str);
-            habit.streak += 1;
-            println!("Habit '{}' marked! Streak: {}", habit.name, habit.streak);
+        
+        if dates.is_empty() {
+            println!("Marking today as done!");
+            let current_date = Local::now().date_naive();
+            habit.history.push(current_date.to_string());
         } else {
-            println!("Habit '{}' is already marked today.", habit.name);
+            println!("Marking: {:?}", dates);
+            habit.history.extend(dates.iter().cloned());
         }
+
+        habit.history.sort();
+    } else {
+        println!("Habit not found.");
+    }
+}
+
+fn unmark_habit(habits: &mut Vec<Habit>, name: &str, dates: Vec<String>) {
+    
+    if let Some(habit) = habits.iter_mut().find(|h| h.name == name) {
+        
+        if dates.is_empty() {
+            println!("Unmarking today");
+            let current_date_string = Local::now().date_naive().to_string();
+            habit.history.retain(|x| x != &current_date_string);
+        } else {
+            println!("Unmarking: {:?}", dates);
+            habit.history.retain(|x| !dates.contains(x));
+        }
+        
+        habit.history.sort();
     } else {
         println!("Habit not found.");
     }
@@ -140,8 +168,8 @@ fn print_graph(habit: &Habit) {
     let mut stdout = stdout();
     let width: u16;
     
-    let current_date = NaiveDate::parse_from_str("2025-12-1", "%Y-%m-%d").unwrap();
-    //let current_date = Local::now().date_naive();
+    
+    let current_date = Local::now().date_naive();
     let current_weekday = current_date.weekday().number_from_monday();
 
      if let Some((Width(w), _)) = terminal_size() {
@@ -165,6 +193,7 @@ fn print_graph(habit: &Habit) {
     
     // Mark completed days
     for day in habit.history.iter().rev() {
+        
         let date = NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
         let weekday = date.weekday().number_from_monday();
 
@@ -216,68 +245,7 @@ fn list_habits(habits: Vec<Habit>) {
     
 }
 
-fn edit_habit(habits: &mut Vec<Habit>, name: &str) {
-    
-    if let Some(habit) = habits.iter_mut().find(|h| h.name == name) {
-        let mut stdout = stdout();
-        let width: u16;
-        
-        if let Some((Width(w), _)) = terminal_size() {
-           width = w;
-        } else {
-           println!("Couldn't get terminal size.");
-           std::process::exit(1);
-        }
 
-        let current_date = Local::now().date_naive();
-        let current_weekday = current_date.weekday().number_from_monday();
-
-        let mut selected_date = current_date.clone();
-
-        //print_graph(habit);
-
-        // Read arrow keys 
-        enable_raw_mode();
-        loop {
-            if event::poll(std::time::Duration::from_millis(100)).unwrap_or(false) {
-                match event::read() {
-                    Ok(Event::Key(key_event)) => {
-                        match key_event.code {
-                            KeyCode::Up => {
-                                selected_date -= Duration::days(1);
-                            }
-                            KeyCode::Down => {
-                                let t = selected_date + Duration::days(1);
-                                if t>=current_date {
-                                    selected_date = t;
-                                }
-                            }
-                            KeyCode::Left => {
-                                selected_date -= Duration::days(7);
-                            }
-                            KeyCode::Right => {
-                                let t = selected_date + Duration::days(7);
-                                if t>=current_date {
-                                    selected_date = t;
-                                }
-                            }
-                            KeyCode::Esc => {
-                                println!("ESC pressed, exiting key loop");
-                                break;
-                            }
-                            _ => {}
-                        }
-                    }
-                    Ok(_) => {} // ignore other events
-                    Err(_) => break,
-                }
-            }
-            println!("{}",selected_date);
-        }
-    } else {
-        println!("Habit not found.");
-    }
-}
 fn main() {
     
     let cli = Cli::parse();
@@ -295,33 +263,34 @@ fn main() {
             
             list_habits(habits);
         }
-        Commands::Mark { name } => {
-            mark_habit(&mut habits, name);
+        Commands::Graph { name } => {
+            if let Some(habit) = habits.iter_mut().find(|h| h.name == *name) {
+                print_graph(&habit);
+            }
+        }
+        Commands::Mark { name, dates} => {
+            mark_habit(&mut habits, name, dates.to_vec());
+            let _ = save_data(&habits_path, &habits);
+        }
+        Commands::Unmark { name, dates} => {
+            unmark_habit(&mut habits, name, dates.to_vec());
             let _ = save_data(&habits_path, &habits);
         }
         Commands::Add { name } => {
             add_habit(&mut habits, name);
             let _ = save_data(&habits_path, &habits);
         }
-        Commands::Graph { name } => {
-            if let Some(habit) = habits.iter_mut().find(|h| h.name == *name) {
-                print_graph(&habit);
-            }
-        }
         Commands::Remove { name } => {
             habits.retain(|h| h.name != *name);
             let _ = save_data(&habits_path, &habits);
         }
-        Commands::Edit { name } => {
-            edit_habit(&mut habits, name);
-        }
+        
         
     }
     
 }
 
 /* To-do
-- Add edit mode
 - Add default habit
 - Multiple habits graphing
 - Waybar module
