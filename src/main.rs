@@ -1,4 +1,4 @@
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::{Datelike, Duration, Local, NaiveDate};
 use crossterm::ExecutableCommand;
 use crossterm::cursor::{Hide, MoveTo};
 use crossterm::terminal::{Clear, ClearType};
@@ -12,6 +12,7 @@ use std::io::{stdout, Write};
 use prettytable::{Table, Row, Cell};
 use prettytable::Attr; // for bold, italic, etc.
 use directories_next::ProjectDirs;
+use std::collections::HashSet;
 
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -26,7 +27,7 @@ struct Habit {
 #[command(
     name = "habit-tracker",
     about = "A simple visual habit tracker",
-    override_usage = "habit-tracker <COMMAND> [HABIT] [DATE]"
+    override_usage = "habit-tracker <COMMAND> [HABIT] [DATE] \nSpecify the date in YYYY-MM-DD format. Multiple dates should be separated with spaces only.\nIf you accidentally use a wrong format or separator undo your actions with unmark command and the same arguments as previously."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -64,6 +65,10 @@ enum Commands {
     },
 }
 
+fn unique_preserve_order(vec: &mut Vec<String>) {
+    let mut seen = HashSet::new();
+    vec.retain(|item| seen.insert(item.clone()));
+}
 
 fn get_habits_path() -> io::Result<PathBuf> {
     
@@ -102,17 +107,24 @@ fn save_data(habits_path: &PathBuf, habits: &Vec<Habit>) -> io::Result<()> {
 
 fn check_streak(habits: &mut Vec<Habit>) {
     let today = Local::now().date_naive();
+    
     for habit in habits {
-        if let Some(last_entry) = habit.history.last() {
-            let date = NaiveDate::parse_from_str(&last_entry.as_str(), "%Y-%m-%d").unwrap();
-            if (today - date).num_days() > 1 {
-                habit.streak = 0;
-            } else if date == today {
-                habit.streak += 1;
+        unique_preserve_order(&mut habit.history);
+        let mut previous_date = today + Duration::days(1);
+        let mut streak = 0;
+        
+        for entry in habit.history.iter().rev() {
+            let date = NaiveDate::parse_from_str(&entry.as_str(), "%Y-%m-%d").unwrap();
+            if previous_date - date == Duration::days(1) {
+                streak+=1;
+                previous_date = date.clone();
+                
+            } else {
+                //break;
             }
-        }   
+        }
+        habit.streak = streak; 
     }
-
 }
 
 fn mark_habit(habits: &mut Vec<Habit>, name: &str, dates: Vec<String>) {
@@ -120,9 +132,18 @@ fn mark_habit(habits: &mut Vec<Habit>, name: &str, dates: Vec<String>) {
     if let Some(habit) = habits.iter_mut().find(|h| h.name == name) {
         
         if dates.is_empty() {
+            
             println!("Marking today as done!");
             let current_date = Local::now().date_naive();
-            habit.history.push(current_date.to_string());
+            
+            if let Some(last_entry) = habit.history.last() {
+                let date = NaiveDate::parse_from_str(&last_entry.as_str(), "%Y-%m-%d").unwrap();
+                if  date != current_date {
+                    habit.history.push(current_date.to_string());
+                    habit.streak+=1;
+                }
+            }
+
         } else {
             println!("Marking: {:?}", dates);
             habit.history.extend(dates.iter().cloned());
@@ -252,14 +273,15 @@ fn main() {
     let habits_path = get_habits_path().unwrap();
     let mut habits = load_data(&habits_path).expect("Failed to load data");
 
-    check_streak(&mut habits);
+    
 
-    let _ = save_data(&habits_path, &habits);
+    
 
     
     match &cli.command {
         Commands::List => {
-            
+            check_streak(&mut habits);
+            let _ = save_data(&habits_path, &habits);
             list_habits(habits);
         }
         Commands::Graph { name } => {
@@ -269,10 +291,12 @@ fn main() {
         }
         Commands::Mark { name, dates} => {
             mark_habit(&mut habits, name, dates.to_vec());
+            check_streak(&mut habits);
             let _ = save_data(&habits_path, &habits);
         }
         Commands::Unmark { name, dates} => {
             unmark_habit(&mut habits, name, dates.to_vec());
+            check_streak(&mut habits);
             let _ = save_data(&habits_path, &habits);
         }
         Commands::Add { name } => {
