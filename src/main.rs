@@ -25,9 +25,9 @@ struct Habit {
 
 #[derive(Parser)] 
 #[command(
-    name = "habit-tracker",
+    name = "rhabits",
     about = "A simple visual habit tracker",
-    override_usage = "habit-tracker <COMMAND> [HABIT] [DATE] \nSpecify the date in YYYY-MM-DD format. Multiple dates should be separated with spaces only.\nIf you accidentally use a wrong format or separator undo your actions with unmark command and the same arguments as previously."
+    override_usage = "rhabits <COMMAND> [HABIT] [DATE] \nSpecify the date in YYYY-MM-DD format. Multiple dates should be separated with spaces only.\nIf you accidentally use a wrong format or separator undo your actions with unmark command and the same arguments as previously.\nHabits are stored at $XDG_DATA_HOME/rhabits/habits.json"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -72,10 +72,10 @@ fn unique_preserve_order(vec: &mut Vec<String>) {
 
 fn get_habits_path() -> io::Result<PathBuf> {
     
-    let proj_dirs = ProjectDirs::from("", "w4shington-irving", "habit-tracker")
+    let proj_dirs = ProjectDirs::from("", "w4shington-irving", "rhabits")
         .expect("Failed to get project directories");
 
-    let data_dir = proj_dirs.data_dir();    // ~/.local/share/habit-tracker/
+    let data_dir = proj_dirs.data_dir();    // ~/.local/share/rhabits/
     let file_path = data_dir.join("habits.json");
 
     
