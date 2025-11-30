@@ -22,7 +22,6 @@ struct Habit {
     history: Vec<String>, // store dates as YYYY-MM-DD
 }
 
-
 #[derive(Parser)] 
 #[command(
     name = "rhabits",
@@ -40,7 +39,7 @@ enum Commands {
     List,
     /// Print the graph with your habit's history
     Graph {
-        name: String,
+        names: Vec<String>,
     },
     /// Mark a day (or days) as done, leave empty to mark today
     Mark {
@@ -183,16 +182,57 @@ fn add_habit(habits: &mut Vec<Habit>, name: &str) {
 
 }
 
-fn print_graph(habit: &Habit) {
+fn print_graph(habits: Vec<Habit>, names: Vec<String>) {
 
+
+    // Merge dates
+    let mut merged: Vec<String> = Vec::new();
+    let mut habit_count = 0;
+    for name in names {
+        if let Some(habit) = habits.iter().find(|h| h.name == name) {
+            merged.extend(habit.history.iter().cloned());
+            habit_count += 1;
+        }
+    }
+    merged.sort();
+    //print!("{:?}", entries);
+
+    // Count duplicates
+    let mut dates: Vec<String> = Vec::new();
+    let mut counts: Vec<i32> = Vec::new();
+    
+    let mut previous = &merged[0];
+    let mut count = 1;
+
+    for i in 1..merged.len() {
+        if &merged[i] == previous {
+            count+=1;
+        } else {
+            dates.push(previous.to_owned());
+            counts.push(count);
+            count = 1;
+            previous = &merged[i];
+        }
+
+    }
+
+    dates.push(previous.to_owned());
+    counts.push(count);
+    /* Debug
+    println!("{}", dates.len());
+    for i in (0..=dates.len()-1).rev() { 
+        print!("{:?}:{:?}", dates[i], counts[i]);
+    }
+    */
+    
+    
+    // Print empty graph
     let mut stdout = stdout();
     let width: u16;
-    
-    
     let current_date = Local::now().date_naive();
     let current_weekday = current_date.weekday().number_from_monday();
 
-     if let Some((Width(w), _)) = terminal_size() {
+    if let Some((Width(w), _)) = terminal_size() {
        
         stdout.execute(Clear(ClearType::All)).unwrap();
         stdout.execute(MoveTo(0, 0)).unwrap();
@@ -212,11 +252,10 @@ fn print_graph(habit: &Habit) {
     
     
     // Mark completed days
-    for day in habit.history.iter().rev() {
+    for i in (0..=dates.len()-1).rev() {
         
-        let date = NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
+        let date = NaiveDate::parse_from_str(&dates[i], "%Y-%m-%d").unwrap();
         let weekday = date.weekday().number_from_monday();
-
         let difference = current_date-date;
         let calc_x = 2 * (width as i32 / 2) - 2*((difference.num_days() as i32+weekday as i32-1)/7+1);
         
@@ -227,8 +266,10 @@ fn print_graph(habit: &Habit) {
         let position_x = calc_x as u16;
         let position_y = weekday as u16 -1;   
         
+        let intensity = ((counts[i] as f32) / (habit_count as f32) * 255.0) as u8;
         stdout.execute(MoveTo(position_x, position_y)).unwrap();
-        print!(" ");
+
+        print!("\x1b[38;2;0;{};0m \x1b[0m", intensity);
     }
        
     // Remove upcoming days
@@ -273,21 +314,14 @@ fn main() {
     let habits_path = get_habits_path().unwrap();
     let mut habits = load_data(&habits_path).expect("Failed to load data");
 
-    
-
-    
-
-    
     match &cli.command {
         Commands::List => {
             check_streak(&mut habits);
             let _ = save_data(&habits_path, &habits);
             list_habits(habits);
         }
-        Commands::Graph { name } => {
-            if let Some(habit) = habits.iter_mut().find(|h| h.name == *name) {
-                print_graph(&habit);
-            }
+        Commands::Graph { names } => {
+            print_graph(habits, names.to_vec());
         }
         Commands::Mark { name, dates} => {
             mark_habit(&mut habits, name, dates.to_vec());
@@ -314,6 +348,7 @@ fn main() {
 }
 
 /* To-do
+- Support adding multiple habits at once
 - Add failsafe for malformed dates
 - Add default habit
 - Multiple habits graphing
