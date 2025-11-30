@@ -195,7 +195,6 @@ fn print_graph(habits: Vec<Habit>, names: Vec<String>) {
         }
     }
     merged.sort();
-    //print!("{:?}", entries);
 
     // Count duplicates
     let mut dates: Vec<String> = Vec::new();
@@ -218,13 +217,6 @@ fn print_graph(habits: Vec<Habit>, names: Vec<String>) {
 
     dates.push(previous.to_owned());
     counts.push(count);
-    /* Debug
-    println!("{}", dates.len());
-    for i in (0..=dates.len()-1).rev() { 
-        print!("{:?}:{:?}", dates[i], counts[i]);
-    }
-    */
-    
     
     // Print empty graph
     let mut stdout = stdout();
